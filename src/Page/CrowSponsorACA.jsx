@@ -6,11 +6,167 @@ import Textera from "../components/Textera";
 import { WsProvider } from "@polkadot/api";
 import { createTestPairs } from "@polkadot/keyring/testingPairs";
 import { SubstrateSigner, BodhiProvider, BodhiSigner } from "@acala-network/bodhi";
+import { ethers } from "ethers";
+import Abi from "../utils/abi.json";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { web3Enable } from "@polkadot/extension-dapp";
+import { ContractFactory, Contract } from "ethers";
+// import { formatUnits } from "ethers/src.ts/utils/";
 
 function CrowsponsorACA() {
   const [searchParams] = useSearchParams();
   const searchParamsObject = Object.fromEntries([...searchParams]);
   const { name, price_type, total_price, blockchain, end_at, des } = searchParamsObject;
+
+  /* ---------- extensions ---------- */
+  const [extensionList, setExtensionList] = useState([]);
+  const [curExtension, setCurExtension] = useState(undefined);
+  const [accountList, setAccountList] = useState([]);
+
+  /* ---------- status flags ---------- */
+  const [connecting, setConnecting] = useState(false);
+  const [loadingAccount, setLoadingAccountInfo] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+  const [calling, setCalling] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  /* ---------- data ---------- */
+  const [provider, setProvider] = useState(null);
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const [evmAddress, setEvmAddress] = useState("");
+  const [isClaimed, setIsClaimed] = useState(false);
+  const [balance, setBalance] = useState("");
+  const [deployedAddress, setDeployedAddress] = useState("");
+  const [echoInput, setEchoInput] = useState("calling an EVM+ contract with polkadot wallet!");
+  const [echoMsg, setEchoMsg] = useState("");
+  const [newEchoMsg, setNewEchoMsg] = useState("");
+  const [url, setUrl] = useState("wss://mandala-tc9-rpc.aca-staging.network");
+
+  /* ------------ Step 1: connect to chain node with a provider ------------ */
+  useEffect(() => {
+    setConnecting(true);
+    const fetch = async () => {
+      try {
+        const signerProvider = new BodhiProvider({
+          provider: new WsProvider("wss://mandala-tc9-rpc.aca-staging.network"),
+        });
+
+        await signerProvider.isReady();
+
+        setProvider(signerProvider);
+      } catch (error) {
+        console.error(error);
+        setProvider(null);
+      } finally {
+        setConnecting(false);
+      }
+    };
+    fetch();
+  }, []);
+
+  /* ------------ Step 2: connect polkadot wallet ------------ */
+  useEffect(() => {
+    const fetch = async () => {
+      const allExtensions = await web3Enable("bodhijs-example");
+      setExtensionList(allExtensions);
+      setCurExtension(allExtensions[0]);
+    };
+    fetch();
+  }, []);
+
+  useEffect(() => {
+    curExtension?.accounts.get().then((result) => {
+      setAccountList(result);
+      setSelectedAddress(result[0].address || "");
+    });
+  }, [curExtension]);
+
+  /* ----------
+     Step 2.1: create a bodhi signer from provider and extension signer
+                                                             ---------- */
+  const signer = useMemo(() => {
+    if (!provider || !curExtension || !selectedAddress) return null;
+    return new BodhiSigner(provider, selectedAddress, curExtension.signer);
+  }, [provider, curExtension, selectedAddress]);
+
+  const claimDefaultAccount = useCallback(async () => {
+    if (!signer) return;
+
+    setIsClaiming(true);
+    try {
+      await signer.claimDefaultAccount();
+    } finally {
+      setIsClaiming(false);
+      setIsClaimed(true);
+      const bal = await signer.getBalance();
+      //   setBalance(formatUnits(bal));
+    }
+  }, [signer, setIsClaiming]);
+
+  useEffect(() => {
+    (async function fetchAccountInfo() {
+      if (!signer) return;
+
+      setLoadingAccountInfo(true);
+      try {
+        const [evmAddr, accountBalance, claimed] = await Promise.all([
+          signer.getAddress(),
+          signer.getBalance(),
+          signer.isClaimed(),
+        ]);
+
+        console.log(accountBalance.toString());
+        // setBalance(formatUnits(accountBalance));
+        setEvmAddress(evmAddr);
+        setIsClaimed(claimed);
+      } catch (error) {
+        console.error(error);
+        setEvmAddress("");
+        setBalance("");
+      } finally {
+        setLoadingAccountInfo(false);
+      }
+    })();
+  }, [signer]);
+
+  //   const deploy = useCallback(async () => {
+  //     if (!signer) return;
+
+  //     setDeploying(true);
+  //     try {
+  //       const factory = new ContractFactory(echobi, echoContract.bytecode, signer);
+
+  //       const contract = await factory.deploy();
+  //       const echo = await contract.echo();
+
+  //       setDeployedAddress(contract.address);
+  //       setEchoMsg(echo);
+  //     } finally {
+  //       setDeploying(false);
+  //     }
+  //   }, [signer]);
+
+  /* ------------ Step 4: call contract ------------ */
+  const callContract = useCallback(
+    async (msg) => {
+      if (!signer) return;
+      setCalling(true);
+      setNewEchoMsg("");
+      try {
+        const instance = new Contract("0x1CFAC008f7757e320fE74248B9F6618c5B43D677", Abi, signer);
+
+        console.log(ethers.parseEther("1").toString());
+
+        await instance.deposit(0, "1", 1000, { value: ethers.parseEther("1").toString() });
+        // const newEcho = await instance.echo();
+
+        // setNewEchoMsg(newEcho);
+      } finally {
+        setCalling(false);
+      }
+    },
+    [signer, deployedAddress]
+  );
 
   return (
     <div className="w-full">
@@ -80,7 +236,10 @@ Free or heavily discounted booths"
           </div>
         </div>
       </div>
-      <button className="mt-4 bg-blue-500 hover:bg-opacity-60 text-white font-medium md:font-bold  md:py-3 md:px-8 rounded text-[16px] md:text-[20px] relative left-[50%] -translate-x-[50%] items-center flex">
+      <button
+        onClick={callContract}
+        className="mt-4 bg-blue-500 hover:bg-opacity-60 text-white font-medium md:font-bold  md:py-3 md:px-8 rounded text-[16px] md:text-[20px] relative left-[50%] -translate-x-[50%] items-center flex"
+      >
         Deposit
       </button>
     </div>
