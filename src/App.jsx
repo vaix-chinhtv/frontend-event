@@ -5,6 +5,7 @@ import PaymentCrowdSponsor from "./Page/PaymentCrowdSponsor";
 import ClaimNFT from "./Page/ClaimNFT";
 import NotFound from "./Page/NotFound";
 import RewardNFT from "./Page/RewardNFT";
+import CrowsponsorACA from "./Page/CrowSponsorACA";
 
 function App() {
   return (
@@ -12,7 +13,7 @@ function App() {
       <Routes>
         <Route path="/payment-nft" element={<PaymentNft />} />
         <Route path="/claim-nft" element={<ClaimNFT />} />
-        <Route path="/payment-crowdsponsor" element={<PaymentCrowdSponsor />} />
+        <Route path="/payment-crowdsponsor" element={<CrowsponsorACA />} />
         <Route path="/reward-nft" element={<RewardNFT />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
